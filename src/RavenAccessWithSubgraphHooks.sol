@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.24;
 
 // OpenZeppelin contracts (install @openzeppelin/contracts)
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -49,7 +49,7 @@ contract RavenAccessWithSubgraphHooks is Ownable, ReentrancyGuard, Pausable {
     // Global price-accuracy per-plan cap enforcement
     uint256 public GLOBAL_PRICE_ACCURACY_CAP = 3000;
 
-	    // IMPLEMENT: per-user monotonic sequence to allow subgraphs to order events reliably
+	// IMPLEMENT: per-user monotonic sequence to allow subgraphs to order events reliably
     mapping(address => uint256) public userSequence;
 
     // -----------------------

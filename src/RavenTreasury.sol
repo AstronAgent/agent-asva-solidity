@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -46,6 +46,7 @@ contract RavenTreasury is Ownable, ReentrancyGuard, Pausable {
     }
 
     modifier onlyGnosisOwner() {
+        require(address(gnosisSafe) != address(0), "gnosis safe not set");
         require(gnosisSafe.isOwner(msg.sender), "not gnosis owner");
         _;
     }
@@ -98,8 +99,12 @@ contract RavenTreasury is Ownable, ReentrancyGuard, Pausable {
     ) external onlyGnosisSafe {
         require(token != address(0), "zero token");
         require(spender != address(0), "zero spender");
-
-        IERC20(token).approve(spender, amount);
+        IERC20 erc20 = IERC20(token);
+        uint256 current = erc20.allowance(address(this), spender);
+        if (current != 0) {
+            erc20.safeApprove(spender, 0);
+        }
+        erc20.safeApprove(spender, amount);
         emit SpendingApproved(token, spender, amount);
     }
 
@@ -127,14 +132,17 @@ contract RavenTreasury is Ownable, ReentrancyGuard, Pausable {
 
     // View functions
     function getGnosisOwners() external view returns (address[] memory) {
+        require(address(gnosisSafe) != address(0), "gnosis safe not set");
         return gnosisSafe.getOwners();
     }
 
     function getGnosisThreshold() external view returns (uint256) {
+        require(address(gnosisSafe) != address(0), "gnosis safe not set");
         return gnosisSafe.getThreshold();
     }
 
     function isGnosisOwner(address owner) external view returns (bool) {
+        require(address(gnosisSafe) != address(0), "gnosis safe not set");
         return gnosisSafe.isOwner(owner);
     }
 
