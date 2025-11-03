@@ -100,11 +100,7 @@ contract RavenTreasury is Ownable, ReentrancyGuard, Pausable {
         require(token != address(0), "zero token");
         require(spender != address(0), "zero spender");
         IERC20 erc20 = IERC20(token);
-        uint256 current = erc20.allowance(address(this), spender);
-        if (current != 0) {
-            erc20.safeApprove(spender, 0);
-        }
-        erc20.safeApprove(spender, amount);
+        erc20.forceApprove(spender, amount);
         emit SpendingApproved(token, spender, amount);
     }
 

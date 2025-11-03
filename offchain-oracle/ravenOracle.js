@@ -20,6 +20,10 @@ class RavenOracle {
             tags: 2,
             price_accuracy: 4,
             full: 6,
+            // New off-chain billed modes
+            //scores: 2,
+            logic : 2,
+            sentiment: 2,
         };
 
         // Constraint constants
@@ -250,7 +254,7 @@ async function main() {
     // Configuration (env overrides recommended for terminal usage)
     const RPC_URL = process.env.RPC_URL || 'https://sepolia.infura.io/v3/YOUR_INFURA_KEY';
     const RAVEN_ACCESS_ADDRESS = process.env.RAVEN_ACCESS_ADDRESS || '0x...';
-    const PRIVATE_KEY = process.env.PRIVATE_KEY || '';
+    //const PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 
     // Initialize oracle
     const provider = new ethers.JsonRpcProvider(RPC_URL);
@@ -259,12 +263,8 @@ async function main() {
         RAVEN_ACCESS_ADDRESS
     );
 
-    // Optional signer for write operations
+    // Signer intentionally not loaded from PRIVATE_KEY in this example.
     let signer = null;
-    if (PRIVATE_KEY) {
-        signer = new ethers.Wallet(PRIVATE_KEY, provider);
-        // console.log('Signer loaded for writes:', await signer.getAddress());
-    }
 
     // Example: Check user subscription
     const userAddress = process.env.USER || '0x...';

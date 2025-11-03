@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "offchain-oracle/server.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "offchain-oracle/server.js" }
+  ]
+}
+
+

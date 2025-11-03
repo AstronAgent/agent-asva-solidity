@@ -54,9 +54,27 @@ async function main() {
   const plan3 = await ravenAccess.plans(3);
 
   console.log("\nSubscription Plans:");
-  console.log("Plan 1:", ethers.formatUnits(plan1.priceUnits, 6), "USDC,", plan1.monthlyCap.toNumber(), "requests/month");
-  console.log("Plan 2:", ethers.formatUnits(plan2.priceUnits, 6), "USDC,", plan2.monthlyCap.toNumber(), "requests/month");
-  console.log("Plan 3:", ethers.formatUnits(plan3.priceUnits, 6), "USDC,", plan3.monthlyCap.toNumber(), "requests/month");
+  console.log(
+    "Plan 1:",
+    ethers.formatUnits(plan1.priceUnits, 6),
+    "USDC,",
+    Number(plan1.monthlyCap),
+    "requests/month"
+  );
+  console.log(
+    "Plan 2:",
+    ethers.formatUnits(plan2.priceUnits, 6),
+    "USDC,",
+    Number(plan2.monthlyCap),
+    "requests/month"
+  );
+  console.log(
+    "Plan 3:",
+    ethers.formatUnits(plan3.priceUnits, 6),
+    "USDC,",
+    Number(plan3.monthlyCap),
+    "requests/month"
+  );
 
   console.log("\nDeployment Complete!");
   console.log("\nNext steps:");

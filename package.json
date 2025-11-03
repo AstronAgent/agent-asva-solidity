@@ -6,6 +6,7 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "coverage": "hardhat coverage",
+    "deploy:mocks:sepolia": "hardhat run scripts/deployMocks.ts --network sepolia",
     "deploy:sepolia": "hardhat run scripts/deploySubcribe.ts --network sepolia && hardhat run scripts/deployTreasury.ts --network sepolia",
     "deploy:base": "hardhat run scripts/deploySubcribe.ts --network base && hardhat run scripts/deployTreasury.ts --network base",
     "node": "hardhat node",
@@ -37,3 +38,4 @@
   ],
   "author": "Pavan ASVA",
   "license": "MIT"
+}
