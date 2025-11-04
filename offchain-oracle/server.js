@@ -11,13 +11,60 @@ const PORT = process.env.PORT || 8080;
 const RPC_URL = process.env.RPC_URL || 'https://sepolia.infura.io/v3/YOUR_INFURA_KEY';
 const RAVEN_ACCESS_ADDRESS = process.env.RAVEN_ACCESS_ADDRESS || '0x0000000000000000000000000000000000000000';
 
-// Providers and oracle instance (read-only by default)
-const provider = new ethers.JsonRpcProvider(RPC_URL);
-const oracle = new RavenOracle(provider, RAVEN_ACCESS_ADDRESS);
+// Helper: JSON-safe serializer for BigInt
+function serialize(value) {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map(serialize);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = serialize(v);
+    return out;
+  }
+  return value;
+}
+
+// Lazy provider/oracle to avoid crashing when env is missing
+let _provider = null;
+let _oracle = null;
+
+function getProvider() {
+  if (!_provider) {
+    _provider = new ethers.JsonRpcProvider(RPC_URL);
+  }
+  return _provider;
+}
+
+function getOracle() {
+  if (_oracle) return _oracle;
+  if (!ethers.isAddress(RAVEN_ACCESS_ADDRESS) || RAVEN_ACCESS_ADDRESS === '0x0000000000000000000000000000000000000000') {
+    throw new Error('RAVEN_ACCESS_ADDRESS not configured');
+  }
+  _oracle = new RavenOracle(getProvider(), RAVEN_ACCESS_ADDRESS);
+  return _oracle;
+}
 
 // Health
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  res.json(serialize({ status: 'ok' }));
+});
+
+// Root
+app.get('/', (_req, res) => {
+  res.json(serialize({
+    status: 'ok',
+    service: 'Raven Oracle API',
+    hint: 'Use /health or documented endpoints',
+    endpoints: [
+      'GET /health',
+      'POST /inference/estimate',
+      'POST /inference/authorize',
+      'GET /users/:address/credits',
+      'GET /users/:address/subscription',
+      'GET /users/:address/has-active-subscription',
+      'POST /memory/update',
+      'POST /credits/initial-grant'
+    ]
+  }));
 });
 
 // Estimate credits for arbitrary reason
@@ -27,8 +74,8 @@ app.post('/credits/calculate', (req, res) => {
     const { reason, parameter } = req.body || {};
     if (typeof reason !== 'string') return res.status(400).json({ error: 'reason required' });
     if (!Number.isFinite(parameter)) return res.status(400).json({ error: 'parameter must be number' });
-    const credits = oracle.calculateCredits(reason, Number(parameter));
-    return res.json({ credits });
+    const credits = getOracle().calculateCredits(reason, Number(parameter));
+    return res.json(serialize({ credits }));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -40,8 +87,8 @@ app.post('/inference/estimate', (req, res) => {
   try {
     const { mode, quantity = 1 } = req.body || {};
     if (typeof mode !== 'string') return res.status(400).json({ error: 'mode required' });
-    const cost = oracle.getInferenceCost(mode, Number(quantity));
-    return res.json({ cost });
+    const cost = getOracle().getInferenceCost(mode, Number(quantity));
+    return res.json(serialize({ cost }));
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
@@ -53,8 +100,8 @@ app.post('/inference/authorize', async (req, res) => {
   try {
     const { user, mode, quantity = 1 } = req.body || {};
     if (!ethers.isAddress(user)) return res.status(400).json({ error: 'valid user address required' });
-    const result = await oracle.authorizeInference(user, mode, Number(quantity));
-    return res.json(result);
+    const result = await getOracle().authorizeInference(user, mode, Number(quantity));
+    return res.json(serialize(result));
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
@@ -86,9 +133,9 @@ app.post('/memory/update', async (req, res) => {
     if (!ethers.isAddress(user)) return res.status(400).json({ error: 'valid user address required' });
     if (typeof memoryHash !== 'string' || memoryHash.length === 0) return res.status(400).json({ error: 'memoryHash required' });
 
-    const iface = new ethers.Interface(oracle.getAccessABI());
+    const iface = new ethers.Interface(getOracle().getAccessABI());
     const data = iface.encodeFunctionData('updateUserMemoryPointer', [user, memoryHash]);
-    return res.json({ to: RAVEN_ACCESS_ADDRESS, data });
+    return res.json(serialize({ to: RAVEN_ACCESS_ADDRESS, data }));
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
@@ -99,8 +146,8 @@ app.get('/users/:address/credits', async (req, res) => {
   try {
     const addr = req.params.address;
     if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
-    const credits = await oracle.getUserCredits(addr);
-    return res.json({ address: addr, credits });
+    const credits = await getOracle().getUserCredits(addr);
+    return res.json(serialize({ address: addr, credits }));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -110,8 +157,8 @@ app.get('/users/:address/subscription', async (req, res) => {
   try {
     const addr = req.params.address;
     if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
-    const sub = await oracle.getUserSubscription(addr);
-    return res.json(sub || {});
+    const sub = await getOracle().getUserSubscription(addr);
+    return res.json(serialize(sub || {}));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -122,8 +169,8 @@ app.get('/users/:address/has-active-subscription', async (req, res) => {
   try {
     const addr = req.params.address;
     if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
-    const has = await oracle.hasActiveSubscription(addr);
-    return res.json({ address: addr, hasActiveSubscription: !!has });
+    const has = await getOracle().hasActiveSubscription(addr);
+    return res.json(serialize({ address: addr, hasActiveSubscription: !!has }));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -144,8 +191,8 @@ app.post('/credits/initial-grant', async (req, res) => {
     if (!ethers.isAddress(user)) return res.status(400).json({ error: 'valid user address required' });
 
     const [creditsStr, subscription] = await Promise.all([
-      oracle.getUserCredits(user),
-      oracle.getUserSubscription(user)
+      getOracle().getUserCredits(user),
+      getOracle().getUserSubscription(user)
     ]);
 
     const hasCredits = BigInt(creditsStr) > 0n;
@@ -154,9 +201,9 @@ app.post('/credits/initial-grant', async (req, res) => {
       return res.status(400).json({ error: 'not eligible (has credits or active subscription)' });
     }
 
-    const iface = new ethers.Interface(oracle.getAccessABI());
+    const iface = new ethers.Interface(getOracle().getAccessABI());
     const data = iface.encodeFunctionData('awardCredits', [user, 50, 'initial_grant']);
-    return res.json({ to: RAVEN_ACCESS_ADDRESS, data });
+    return res.json(serialize({ to: RAVEN_ACCESS_ADDRESS, data }));
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }

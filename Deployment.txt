@@ -23,3 +23,23 @@ Contract Configuration:
   '0xa6b5965ed46A3f66776F118138469583662907ef',
   '0xaB30F936069261527F02Cdbb37167E8945628C29'
 ]
+
+// Addresses
+const usdcAddr = "0x69c11e54051401b254fFE969e2709447817DD547"; // mUSDC
+const usdtAddr = "0x071048c25e28E8Af737A9Aa0edA631426C1932A9"; // mUSDT
+const to = "0x13719837f64746c863497bc804fa8b38093a3e35"; // recipient
+
+// Contracts
+const usdc = await ethers.getContractAt("MockERC20", usdcAddr);
+const usdt = await ethers.getContractAt("MockERC20", usdtAddr);
+
+// Amounts (6 decimals). Example: 1,000,000 tokens
+const amount = ethers.parseUnits("1000000", 6);
+
+// Mint
+(await usdc.mint(to, amount)).hash
+(await usdt.mint(to, amount)).hash
+
+// Verify balances
+(await usdc.balanceOf(to)).toString()
+(await usdt.balanceOf(to)).toString()
