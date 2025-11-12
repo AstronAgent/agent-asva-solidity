@@ -11,3 +11,9 @@ cache/
 dist/
 .build/
 .openzeppelin/
+.local/
+
+# Certora artifacts
+.certora_internal/
+agent-asva-solidity@1.0.0
+bash

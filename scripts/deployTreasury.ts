@@ -4,15 +4,23 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 async function main() {
-  console.log("Deploying RavenTreasury...\n");
+  console.log("Deploying RavenTreasury to Sepolia...\n");
 
-  // Contract addresses (Base mainnet)
-  // Update these with actual addresses for your deployment
-  const GNOSIS_SAFE_ADDRESS = process.env.GNOSIS_SAFE_ADDRESS || ethers.ZeroAddress; // Set after Gnosis Safe creation
-  const USDC_ADDRESS = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base USDC
-  const USDT_ADDRESS = process.env.USDT_ADDRESS || "0xfde4C96c8593536E31F229EA8f37b2ADa2699fc2"; // Base USDT
+  // Gnosis Safe address on Sepolia
+  const GNOSIS_SAFE_ADDRESS = "0xa8C135d27535aDC159d812dDf6B11908181D4bcD";
+  
+  // Sepolia token addresses (update if you have different ones)
+  // Common Sepolia testnet tokens or use mocks
+  const USDC_ADDRESS = process.env.USDC_ADDRESS || "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"; // Sepolia USDC (example)
+  const USDT_ADDRESS = process.env.USDT_ADDRESS || "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0"; // Sepolia USDT (example)
+
+  // Validate Gnosis Safe address
+  if (!ethers.isAddress(GNOSIS_SAFE_ADDRESS)) {
+    throw new Error("Invalid Gnosis Safe address");
+  }
 
   console.log("Deployment Parameters:");
+  console.log("- Network: Sepolia");
   console.log("- Gnosis Safe:", GNOSIS_SAFE_ADDRESS);
   console.log("- USDC:", USDC_ADDRESS);
   console.log("- USDT:", USDT_ADDRESS);
@@ -57,11 +65,13 @@ async function main() {
 
   console.log("\nDeployment Complete!");
   console.log("\nNext steps:");
-  console.log("1. Create Gnosis Safe with 2/3 signers");
-  console.log("2. Update GNOSIS_SAFE_ADDRESS in .env");
-  console.log("3. Set Gnosis Safe in treasury: setGnosisSafe(SAFE_ADDRESS)");
-  console.log("4. Transfer ownership to Gnosis Safe: transferOwnershipToGnosisSafe()");
-  console.log("5. Verify contract on block explorer");
+  console.log("1. Verify contract on Etherscan:");
+  console.log(`   npx hardhat verify --network sepolia ${address} "${GNOSIS_SAFE_ADDRESS}" "${USDC_ADDRESS}" "${USDT_ADDRESS}"`);
+  console.log("2. The Gnosis Safe is already configured in the contract");
+  console.log("3. Test the contract from Gnosis Safe UI:");
+  console.log("   - proposeTransfer(to, token, amount)");
+  console.log("   - executeTransfer(proposalId)");
+  console.log("   - cancelTransfer(proposalId)");
 }
 
 main()

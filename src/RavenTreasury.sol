@@ -35,10 +35,32 @@ contract RavenTreasury is Ownable, ReentrancyGuard, Pausable {
     IERC20 public immutable USDC;
     IERC20 public immutable USDT;
 
+    // Proposal-based transfer system with 24-hour window
+    struct TransferProposal {
+        address to;
+        address token;
+        uint256 amount;
+        uint256 proposedAt;
+        bool executed;
+        bool cancelled;
+    }
+
+    mapping(uint256 => TransferProposal) public pendingTransfers;
+    uint256 public nextProposalId;
+
     // Events
     event GnosisSafeSet(address indexed gnosisSafe);
     event FundsTransferred(address indexed to, address indexed token, uint256 amount);
     event SpendingApproved(address indexed token, address indexed spender, uint256 amount);
+    event TransferProposed(
+        uint256 indexed proposalId,
+        address indexed to,
+        address indexed token,
+        uint256 amount,
+        uint256 deadline
+    );
+    event TransferExecuted(uint256 indexed proposalId);
+    event TransferCancelled(uint256 indexed proposalId);
 
     modifier onlyGnosisSafe() {
         require(msg.sender == address(gnosisSafe), "only gnosis safe");
@@ -69,12 +91,61 @@ contract RavenTreasury is Ownable, ReentrancyGuard, Pausable {
         USDT = IERC20(_usdt);
     }
 
-    // Function to transfer funds (only callable by Gnosis Safe)
-    function transferFunds(
+    // Function to propose a transfer (callable by Gnosis Safe via UI)
+    function proposeTransfer(
         address to,
         address token,
         uint256 amount
-    ) external onlyGnosisSafe nonReentrant {
+    ) external onlyGnosisSafe whenNotPaused {
+        require(to != address(0), "zero recipient");
+        require(amount > 0, "zero amount");
+
+        uint256 proposalId = nextProposalId++;
+        uint256 deadline = block.timestamp + 24 hours;
+
+        pendingTransfers[proposalId] = TransferProposal({
+            to: to,
+            token: token,
+            amount: amount,
+            proposedAt: block.timestamp,
+            executed: false,
+            cancelled: false
+        });
+
+        emit TransferProposed(proposalId, to, token, amount, deadline);
+    }
+
+    // Function to execute a proposed transfer (only callable by Gnosis Safe after multi-sig approval)
+    function executeTransfer(uint256 proposalId) external onlyGnosisSafe nonReentrant whenNotPaused {
+        TransferProposal storage proposal = pendingTransfers[proposalId];
+
+        require(!proposal.executed, "already executed");
+        require(!proposal.cancelled, "cancelled");
+        require(block.timestamp <= proposal.proposedAt + 24 hours, "24h window expired");
+        require(proposal.amount > 0, "invalid proposal");
+        
+        proposal.executed = true;
+        
+        if (proposal.token == address(0)) {
+            // ETH transfer
+            require(address(this).balance >= proposal.amount, "insufficient ETH");
+            (bool success, ) = payable(proposal.to).call{value: proposal.amount}("");
+            require(success, "ETH transfer failed");
+        } else {
+            // ERC20 transfer
+            IERC20(proposal.token).safeTransfer(proposal.to, proposal.amount);
+        }
+
+        emit TransferExecuted(proposalId);
+        emit FundsTransferred(proposal.to, proposal.token, proposal.amount);
+    }
+
+    // Function to transfer funds directly (only callable by Gnosis Safe - for immediate transfers)
+    /*function transferFunds(
+        address to,
+        address token,
+        uint256 amount
+    ) external onlyGnosisSafe nonReentrant whenNotPaused {
         require(to != address(0), "zero recipient");
         require(amount > 0, "zero amount");
 
@@ -89,7 +160,7 @@ contract RavenTreasury is Ownable, ReentrancyGuard, Pausable {
         }
 
         emit FundsTransferred(to, token, amount);
-    }
+    }*/
 
     // Function to approve spending (only callable by Gnosis Safe)
     function approveSpending(
@@ -157,6 +228,59 @@ contract RavenTreasury is Ownable, ReentrancyGuard, Pausable {
         return USDT.balanceOf(address(this));
     }
 
+    // Function to cancel a proposal (callable by Gnosis Safe via UI)
+    function cancelTransfer(uint256 proposalId) external onlyGnosisSafe {
+        TransferProposal storage proposal = pendingTransfers[proposalId];
+        require(!proposal.executed, "already executed");
+        require(!proposal.cancelled, "already cancelled");
+        proposal.cancelled = true;
+        emit TransferCancelled(proposalId);
+    }
+
+    // View functions for proposals
+    function getProposal(uint256 proposalId) external view returns (
+        address to,
+        address token,
+        uint256 amount,
+        uint256 proposedAt,
+        bool executed,
+        bool cancelled,
+        bool isWindowActive,
+        uint256 timeRemaining
+    ) {
+        TransferProposal storage proposal = pendingTransfers[proposalId];
+        require(proposal.amount > 0, "invalid proposal");
+        
+        to = proposal.to;
+        token = proposal.token;
+        amount = proposal.amount;
+        proposedAt = proposal.proposedAt;
+        executed = proposal.executed;
+        cancelled = proposal.cancelled;
+        
+        uint256 currentTime = block.timestamp;
+        uint256 deadline = proposedAt + 24 hours;
+        isWindowActive = !executed && !cancelled && (currentTime <= deadline);
+        
+        if (isWindowActive) {
+            timeRemaining = deadline - currentTime;
+        } else {
+            timeRemaining = 0;
+        }
+    }
+
+    function isProposalWindowActive(uint256 proposalId) external view returns (bool) {
+        TransferProposal storage proposal = pendingTransfers[proposalId];
+        if (proposal.amount == 0 || proposal.executed || proposal.cancelled) return false;
+        uint256 currentTime = block.timestamp;
+        return currentTime <= proposal.proposedAt + 24 hours;
+    }
+
+    function getProposalDeadline(uint256 proposalId) external view returns (uint256) {
+        TransferProposal storage proposal = pendingTransfers[proposalId];
+        require(proposal.amount > 0, "invalid proposal");
+        return proposal.proposedAt + 24 hours;
+    }
 
     // Receive ETH
     receive() external payable {}

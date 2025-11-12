@@ -302,12 +302,9 @@ function setCredits(address user, uint256 newBalance, string calldata reason) ex
             }
         }
 
-        // fallback to credits
+        // FIXED: Use require instead of return
         if (!billedToSubscription) {
-            if (credits[msg.sender] < costCredits) {
-                // User doesn't have enough subscription requests or credits, return early
-                return;
-            }
+            require(credits[msg.sender] >= costCredits, "insufficient credits");
             credits[msg.sender] -= costCredits;
             creditsCharged = costCredits;
             userSequence[msg.sender] += 1;

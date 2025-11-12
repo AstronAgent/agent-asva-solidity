@@ -9,7 +9,7 @@ Use these addresses for Treasury/Access deployments:
 USDC_ADDRESS= 0x69c11e54051401b254fFE969e2709447817DD547
 USDT_ADDRESS= 0x071048c25e28E8Af737A9Aa0edA631426C1932A9
 
-RavenAccess=0x875a7C18BbF618677AcD2EDDc8E527f157144047
+RavenAccess=0x92a2f8F3cC2c7E4CB9B772C060f84D4d2F441d66
 RavenTreasury deployed to: 0xc2998e34e0B448C512307d67f70629abEa9dC35F
 Network: sepolia
 Block number: 9552153
@@ -43,3 +43,12 @@ const amount = ethers.parseUnits("1000000", 6);
 // Verify balances
 (await usdc.balanceOf(to)).toString()
 (await usdt.balanceOf(to)).toString()
+
+
+New test 24hr window added to 
+Contract: RavenTreasury
+Network: Sepolia (chainId 11155111)
+Address: 0xd9270B0AB2f49E44A7aE3F92363B3A51C3D13f29
+Gnosis Safe: 0xa8C135d27535aDC159d812dDf6B11908181D4bcD
+Deployer: 0xa6b5965ed46A3f66776F118138469583662907ef (≈0.2094 ETH remaining)
+Ignition artifacts are stored under ignition/deployments/chain-11155111/.

@@ -1,29 +1,36 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+// certora/mocks/MockERC20.sol
+pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+contract MockERC20 {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
 
-contract MockERC20 is ERC20 {
-    uint8 private _decimals;
+    constructor() {
+       
+        // Give 1M tokens to ANY user who will call (Certora will use this)
+        balanceOf[0x1111111111111111111111111111111111111111] = 1_000_000 * 10**18;
+    }
+    
 
-    constructor(
-        string memory name,
-        string memory symbol,
-        uint8 decimals_
-    ) ERC20(name, symbol) {
-        _decimals = decimals_;
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        if (allowance[from][msg.sender] < amount) return false;
+        if (balanceOf[from] < amount) return false;
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
     }
 
-    function decimals() public view virtual override returns (uint8) {
-        return _decimals;
+    function transfer(address to, uint256 amount) external returns (bool) {
+        if (balanceOf[msg.sender] < amount) return false;
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
     }
 
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-
-    function burn(address from, uint256 amount) external {
-        _burn(from, amount);
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
     }
 }
-
