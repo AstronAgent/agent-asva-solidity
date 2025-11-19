@@ -11,6 +11,17 @@ class RavenOracle {
         this.SOCIAL_QUEST_CREDIT_AMOUNT = 2;
         this.MAX_SOCIAL_QUESTS_PER_USER = 5;
 
+        // Off-chain engagement actions and fixed credit rewards
+        this.ACTION_CREDITS = {
+            new_user_bonus: 50,           // 50 credits
+            referral_you_refer: 15,       // 15 credits
+            referral_you_are_referred: 5, // 5 credits
+            like: 2,                      // 2 credits
+            comment: 3,                   // 3 credits
+            repost: 5,                    // 5 credits
+            yap: 6                        // 6 credits
+        };
+
         this.batchInterval = 60 * 60 * 1000; // 1 hour in milliseconds
         this.lastBatchTime = Date.now();
 
@@ -20,10 +31,10 @@ class RavenOracle {
             tags: 2,
             price_accuracy: 4,
             full: 6,
-            // New off-chain billed modes
-            //scores: 2,
-            logic : 2,
-            sentiment: 2,
+            scores: {
+                logic: 2,
+                sentiment: 2
+            }
         };
 
         // Constraint constants
@@ -49,9 +60,19 @@ class RavenOracle {
 
     // Compute credit cost for an inference request
     getInferenceCost(mode, quantity = 1) {
-        const m = String(mode);
-        const unit = this.COSTS[m];
-        if (!unit) throw new Error('Unknown mode');
+        const path = String(mode).split('.').filter(Boolean);
+        if (!path.length) throw new Error('mode required');
+
+        let unit;
+        if (path.length === 1) {
+            unit = this.COSTS[path[0]];
+        } else if (path.length === 2 && path[0] === 'scores') {
+            unit = this.COSTS.scores?.[path[1]];
+        } else {
+            throw new Error(`Unknown mode: ${mode}`);
+        }
+
+        if (!Number.isFinite(unit)) throw new Error(`Unknown mode: ${mode}`);
         if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('quantity must be > 0');
         return unit * quantity;
     }
@@ -202,19 +223,35 @@ class RavenOracle {
         return subscription.usedThisWindow >= subscription.plan.monthlyCap;
     }
 
+    getActionCredit(action) {
+        if (!action) return null;
+        const key = String(action).toLowerCase();
+        const value = this.ACTION_CREDITS[key];
+        return typeof value === 'number' ? value : null;
+    }
+
     // Calculate credits based on reason and parameter
     calculateCredits(reason, parameter) {
-        switch (reason) {
+        const normalizedReason = String(reason || '').toLowerCase();
+
+        // Fixed-credit actions table (from growth/engagement sheet), supports dotted paths
+        const fixedCredit = this.getActionCredit(normalizedReason);
+        if (fixedCredit !== null) {
+            return fixedCredit;
+        }
+
+        switch (normalizedReason) {
             case 'ai_inference':
             case 'prompt_streak':
                 return Math.floor(parameter / this.AI_INFERENCE_PROMPTS_PER_CREDIT);
             case 'referral':
                 return parameter * this.REFERRAL_CREDIT_AMOUNT;
-            case 'social_quest':
+            case 'social_quest': {
                 const questCount = Math.min(parameter, this.MAX_SOCIAL_QUESTS_PER_USER);
                 return questCount * this.SOCIAL_QUEST_CREDIT_AMOUNT;
+            }
             default:
-                return parameter; // Custom reasons
+                return parameter; // Custom reasons (fallback)
         }
     }
 
