@@ -58,6 +58,40 @@ class RavenOracle {
         return receipt;
     }
 
+    // GetActionXP
+    getActionXP(action){
+        // XP is only for engagement actions, calculated as Credits * 2
+        const credits = this.getActionCredit(action);
+        return credits !== null ? credits * 2 : null;
+    }
+
+    // Note: XP is only for engagements actions , not for calculated credits
+    calculateXP(reason, parameter){
+        const normalizedReason = String(reason || '').toLowerCase();
+
+        // Check if it's an engagement action (has fixed credits)
+        const fixedCredit = this.getActionCredit(normalizedReason);
+        if (fixedCredit !== null) {
+            // Engagement Action: XP = Credits * 2
+            return fixedCredit * 2;
+        }
+
+        // For calculated credits (ai_inference, social_quest, etc.), NO XP
+        return 0;
+    }
+
+    async getUserXP(userAddress){
+        try{
+            const xp = await this.ravenAccess.getUserXP(userAddress);
+            return xp.toString();
+        } catch (err){
+            console.error('Error Getting User XP', err);
+            return '0';
+        }
+    }
+
+
+
     // Compute credit cost for an inference request
     getInferenceCost(mode, quantity = 1) {
         const path = String(mode).split('.').filter(Boolean);
@@ -278,6 +312,8 @@ class RavenOracle {
             "function plans(uint8 planId) external view returns (uint256 priceUnits, uint256 monthlyCap, bool active)",
             "function credits(address user) external view returns (uint256)",
             "function getUserCredits(address user) external view returns (uint256)",
+            "function xp(address user) external view returns (uint256)",
+            "function getUserXP(address user) external view returns (uint256)",
             // Writes
             "function updateUserMemoryPointer(address user, string memoryHash) external",
             "function awardCredits(address user, uint256 amount, string reason) external",

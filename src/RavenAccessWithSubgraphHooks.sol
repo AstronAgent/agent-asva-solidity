@@ -14,6 +14,15 @@ contract RavenAccessWithSubgraphHooks is Ownable, ReentrancyGuard, Pausable {
     IERC20 public immutable USDC;
     IERC20 public immutable USDT;
 
+    // Engagement Constant Hashed
+    bytes32 public constant LIKE = keccak256("like");
+    bytes32 public constant COMMENT = keccak256("comment");
+    bytes32 public constant REPOST = keccak256("repost");
+    bytes32 public constant YAP = keccak256("yap");
+    bytes32 public constant NEW_USER_BONUS = keccak256("new_user_bonus");
+    bytes32 public constant REFERRAL_YOU_REFER = keccak256("referral_you_refer");
+    bytes32 public constant REFERRAL_YOU_ARE_REFERRED = keccak256("referral_you_are_referred");
+
     // Treasury multisig recommended
     address public treasury;
 
@@ -39,6 +48,8 @@ contract RavenAccessWithSubgraphHooks is Ownable, ReentrancyGuard, Pausable {
 
     // Credits (points) shown on dashboard
     mapping(address => uint256) public credits;
+    // ADD XP mapping after credits maping (around line 41)
+    mapping(address => uint256) public xp;
 
     // Costs (credits) for inference modes
     uint256 public constant COST_BASIC = 1;
@@ -90,6 +101,11 @@ contract RavenAccessWithSubgraphHooks is Ownable, ReentrancyGuard, Pausable {
     event TreasurySet(address indexed treasury);
     event GlobalPriceAccuracyCapUpdated(uint256 cap);
 
+    // Add XP Evetns after CreditsBatchChanged event
+    event XPChanged(address indexed user, int256 delta, uint256 newBalance, string reason, address indexed by , uint256 seq);
+    event XPBatchChanged(address[] users, uint256[] amounts, string reason, address indexed by);
+
+
     // -----------------------
     // Constructor & init
     // -----------------------
@@ -115,6 +131,18 @@ contract RavenAccessWithSubgraphHooks is Ownable, ReentrancyGuard, Pausable {
     modifier onlyOracleOrOwner() {
         require(msg.sender == oracle || msg.sender == owner(), "only oracle or owner");
         _;
+    }
+
+    // Add After awardCreditBatch function
+    function _isEngagementAction(string calldata reason) internal pure returns (bool){
+        bytes32 reasonHash = keccak256(bytes(reason));
+        return reasonHash == LIKE ||
+        reasonHash == COMMENT ||
+        reasonHash == REPOST ||
+        reasonHash == YAP ||
+        reasonHash == NEW_USER_BONUS ||
+        reasonHash == REFERRAL_YOU_REFER ||
+        reasonHash == REFERRAL_YOU_ARE_REFERRED;
     }
 
     // -----------------------
@@ -152,22 +180,51 @@ contract RavenAccessWithSubgraphHooks is Ownable, ReentrancyGuard, Pausable {
 
         // bump user sequence for ordering in subgraph
         userSequence[user] += 1;
+
+        // Award XP only for engagement actions: XP = Credits * 2
+        if (_isEngagementAction(reason)){
+            uint256 xpAmount = amount * 2;
+            xp[user] += xpAmount;
+            emit XPChanged(user, int256(xpAmount), xp[user], reason, msg.sender, userSequence[user]);
+        }
+
         emit CreditsChanged(user, int256(amount), credits[user], reason, msg.sender, userSequence[user]);
     }
 
     function awardCreditsBatch(address[] calldata users, uint256[] calldata amounts, string calldata reason) external whenNotPaused nonReentrant onlyOracleOrOwner {
         require(users.length == amounts.length, "len mismatch");
+        
+        bool isEngagementAction = _isEngagementAction(reason);
+        uint256[] memory xpAmounts = new uint256[](users.length);
 
         for (uint256 i = 0; i < users.length; i++) {
             address u = users[i];
             uint256 a = amounts[i];
             if (u == address(0) || a == 0) continue;
             credits[u] += a;
+            
+            // Award XP only for engagement actions: XP = Credits * 2
+            if (isEngagementAction) {
+                uint256 xpAmount = a * 2;
+                xpAmounts[i] = xpAmount;
+                xp[u] += xpAmount;
+            } else {
+                xpAmounts[i] = 0;
+            }
+            
             userSequence[u] += 1;
             emit CreditsChanged(u, int256(a), credits[u], reason, msg.sender, userSequence[u]);
+            
+            // Emit XP event if engagement action
+            if (isEngagementAction && xpAmounts[i] > 0) {
+                emit XPChanged(u, int256(xpAmounts[i]), xp[u], reason, msg.sender, userSequence[u]);
+            }
         }
 
         emit CreditsBatchChanged(users, amounts, reason, msg.sender);
+        if (isEngagementAction) {
+            emit XPBatchChanged(users, xpAmounts, reason, msg.sender);
+        }
     }
 
 
@@ -324,6 +381,14 @@ function setCredits(address user, uint256 newBalance, string calldata reason) ex
             block.timestamp,
             userSequence[msg.sender]
         );
+    }
+
+
+    // -----------------------
+    // View helpers for dashboard/subgraph convenience
+    // -----------------------
+    function getUserXP(address user) external view returns(uint256){
+        return xp[user];
     }
 
     // -----------------------

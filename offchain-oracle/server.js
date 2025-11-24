@@ -820,12 +820,16 @@ app.post('/engagement', async (req, res) => {
       return res.status(400).json({ error: 'unsupported action' });
     }
 
+    // Calculate XP:XP = Credits * 2 (only for engagement Actions)
+    const xp = credits * 2;
+
     const normalizedAddress = normalizeAddress(address);
     const evt = {
       id: randomUUID(),
       address: normalizedAddress,
       action: action.toLowerCase(),
       credits,
+      xp,
       metadata,
       createdAt: Date.now()
     };
@@ -837,6 +841,7 @@ app.post('/engagement', async (req, res) => {
       address: normalizedAddress,
       action: evt.action,
       credits,
+      xp,
       pendingCredits
     }));
   } catch (e) {
@@ -853,6 +858,19 @@ app.get('/users/:address/credits', async (req, res) => {
     return res.json(serialize({ address: addr, credits }));
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/users/:address/xp', async (req , res) => {
+try{
+    const addr = req.params.address;
+    if(!ethers.isAddress(addr)) return res.status(400).json({error: 'Invalid Address'});
+    const oracle = getOracle();
+    const contract = new ethers.Contract(RAVEN_ACCESS_ADDRESS , oracle.getAccessABI() , getProvider());
+    const xp = await contract.getUserXP(addr);
+    return res.json(serialize({address: addr , xp: xp.toString()}));
+  } catch (e){
+    return res.status(500).json({error: e.message});
   }
 });
 
