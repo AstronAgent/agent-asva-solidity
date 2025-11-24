@@ -5,6 +5,7 @@ This Express API:
 - Reads on-chain state from `RavenAccessWithSubgraphHooks`
 - Tracks off-chain engagement events in Neo4j (likes, referrals, etc.)
 - Tracks calculated credits in Neo4j (social_quest, prompt_streak, referral, ai_inference)
+- Automatically awards XP (Experience Points) for engagement actions (XP = Credits * 2)
 - Exposes endpoints for inference estimation/authorization
 - Lets the UI show "pending credits" immediately (from Neo4j) while confirmed credits come from the contract/subgraph
 - Automatically batches pending credits (both engagement and calculated) via `awardCreditsBatch` on a schedule (or manually)
@@ -57,6 +58,14 @@ const decision = await res.json();
 ```js
 const res = await fetch(`/users/${user}/credits`);
 const data = await res.json(); // { address, credits }
+```
+
+### GET `/users/:address/xp`
+- Purpose: read user XP balance (on-chain). XP is automatically awarded when credits are awarded for engagement actions (XP = Credits * 2).
+- Frontend :
+```js
+const res = await fetch(`/users/${user}/xp`);
+const data = await res.json(); // { address, xp }
 ```
 
 ### GET `/users/:address/credits/pending`
@@ -148,20 +157,20 @@ const data = await res.json(); // { address, reason, parameter, credits, totalCa
 ```
 
 ### POST `/engagement`
-- Purpose: record an off-chain engagement action (like, comment, repost, yap, etc.) and add the action's fixed credits to the user's pending balance.
+- Purpose: record an off-chain engagement action (like, comment, repost, yap, etc.) and add the action's fixed credits to the user's pending balance. XP is automatically calculated (XP = Credits * 2) and will be awarded on-chain when credits are settled.
 - Body params (JSON):
   - `address` (string, 0x-address)
   - `action` (string): `new_user_bonus`, `referral_you_refer`, `referral_you_are_referred`, `like`, `comment`, `repost`, `yap`
   - `metadata` (optional object)
-- Response: `{ engagementId, address, action, credits, pendingCredits }`
-- The event is stored in Neo4j with status `'pending'`; pending credits aggregate until batch-settled on-chain.
+- Response: `{ engagementId, address, action, credits, xp, pendingCredits }`
+- The event is stored in Neo4j with status `'pending'`; pending credits aggregate until batch-settled on-chain. When settled, XP is automatically awarded on-chain (XP = Credits * 2) for engagement actions only.
 - Frontend :
 ```js
 const res = await fetch('/engagement', {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ address: '0x...', action: 'like', metadata: {} })
 });
-const data = await res.json();
+const data = await res.json(); // { engagementId, address, action, credits, xp, pendingCredits }
 ```
 
 ### POST `/credits/initial-grant`  (Only oracle/owner)
@@ -203,6 +212,21 @@ const res = await fetch('/credits/settle', {
 const result = await res.json();
 ```
 
+## Credit & XP Rewards
+
+### Engagement Actions (Credits + XP)
+| Action | Credits | XP (Credits × 2) |
+|--------|---------|-------------------|
+| `new_user_bonus` | 50 | 100 |
+| `referral_you_refer` | 15 | 30 |
+| `referral_you_are_referred` | 5 | 10 |
+| `like` | 2 | 4 |
+| `comment` | 3 | 6 |
+| `repost` | 5 | 10 |
+| `yap` | 6 | 12 |
+
+**Note**: XP is only awarded for engagement actions, not for calculated credits (social_quest, prompt_streak, etc.).
+
 ## Credit Flow
 
 The system tracks two types of credits that are stored in Neo4j and eventually settled on-chain:
@@ -212,12 +236,21 @@ The system tracks two types of credits that are stored in Neo4j and eventually s
 - **Actions**: `like`, `comment`, `repost`, `yap`, `new_user_bonus`, `referral_you_refer`, `referral_you_are_referred`
 - **Storage**: Stored as `Engagement` nodes in Neo4j with status `'pending'`
 - **Credits**: Fixed amounts from `ACTION_CREDITS` table
+- **XP**: Automatically calculated as Credits * 2 and awarded on-chain when credits are settled
 
 ### 2. Calculated Credits (Reason-based)
 - **Endpoint**: `POST /credits/calculate-and-store`
 - **Reasons**: `social_quest`, `prompt_streak`, `referral`, `ai_inference`
 - **Storage**: Stored as `CreditCalculation` nodes in Neo4j with status `'pending'`
 - **Credits**: Calculated via `calculateCredits(reason, parameter)` function
+- **XP**: Not awarded for calculated credits (only for engagement actions)
+
+### XP System
+- **XP Award**: XP is automatically awarded on-chain when credits are awarded for **engagement actions only**
+- **XP Formula**: XP = Credits × 2
+- **Eligible Actions**: `like`, `comment`, `repost`, `yap`, `new_user_bonus`, `referral_you_refer`, `referral_you_are_referred`
+- **Read XP**: Use `GET /users/:address/xp` to read on-chain XP balance
+- **Smart Contract**: The `awardCreditsBatch()` function automatically checks if the reason is an engagement action and awards XP accordingly
 
 ### Settlement Process
 Both types of credits are automatically batch-settled on-chain:
@@ -227,7 +260,8 @@ Both types of credits are automatically batch-settled on-chain:
   1. Fetches all pending engagements and credit calculations
   2. Groups by reason/action and user address
   3. Calls `awardCreditsBatch()` on-chain for each group
-  4. Marks records as `'settled'` with transaction hash
+  4. For engagement actions, XP is automatically awarded (XP = Credits * 2)
+  5. Marks records as `'settled'` with transaction hash
 
 ## Configuration
 Set env vars (Vercel → Project → Settings → Environment Variables):
