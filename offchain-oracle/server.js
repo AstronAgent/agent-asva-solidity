@@ -683,9 +683,11 @@ app.get('/', (_req, res) => {
       'POST /inference/estimate',
       'POST /inference/authorize',
       'GET /users/:address/credits',
+      'GET /users/:address/xp',
       'GET /users/:address/credits/pending',
       'GET /users/:address/credits/calculated',
       'GET /users/:address/subscription',
+      'GET /users/:address/inference/remaining?mode=<mode>',
       'GET /users/:address/has-active-subscription',
       'POST /memory/update',
       'POST /credits/initial-grant',
@@ -906,6 +908,21 @@ app.get('/users/:address/subscription', async (req, res) => {
     if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
     const sub = await getOracle().getUserSubscription(addr);
     return res.json(serialize(sub || {}));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// Get remaining inference count for a user
+// Query param: mode (required) - "basic", "tags", "price_accuracy", or "full"
+app.get('/users/:address/inference/remaining', async (req, res) => {
+  try {
+    const addr = req.params.address;
+    const mode = req.query.mode;
+    if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
+    if (!mode || typeof mode !== 'string') return res.status(400).json({ error: 'mode query parameter required (basic, tags, price_accuracy, or full)' });
+    const remaining = await getOracle().getRemainingInference(addr, mode);
+    return res.json(serialize({ address: addr, mode, remaining }));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

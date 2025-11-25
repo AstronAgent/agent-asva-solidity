@@ -305,6 +305,51 @@ class RavenOracle {
 
 
 
+    // Get remaining inference count for a user (calculated off-chain with window reset logic)
+    async getRemainingInference(userAddress, mode) {
+        try {
+            const subscription = await this.getUserSubscription(userAddress);
+            
+            // No subscription = 0 remaining
+            if (!subscription || Number(subscription.planId) === 0) {
+                return '0';
+            }
+
+            // Apply window reset logic (30-day windows, matching contract logic)
+            let usedCount = Number(subscription.usedThisWindow);
+            if (subscription.startTimestamp && Number(subscription.startTimestamp) > 0) {
+                const DAYS_30_SECONDS = 30 * 24 * 60 * 60; // 2592000 seconds
+                const startTimestamp = Number(subscription.startTimestamp);
+                // Get current block timestamp (in seconds)
+                const currentBlock = await this.provider.getBlock('latest');
+                const currentTimestamp = currentBlock ? currentBlock.timestamp : Math.floor(Date.now() / 1000);
+                
+                // Match contract's _monthWindowStart logic: (timestamp / 30 days) * 30 days
+                const lastWindow = Math.floor(startTimestamp / DAYS_30_SECONDS) * DAYS_30_SECONDS;
+                const currentWindow = Math.floor(currentTimestamp / DAYS_30_SECONDS) * DAYS_30_SECONDS;
+                
+                if (currentWindow > lastWindow) {
+                    usedCount = 0; // Window reset
+                }
+            }
+
+            // Determine effective cap based on mode
+            const normalizedMode = String(mode || '').toLowerCase();
+            const isPriceAccuracyMode = normalizedMode === 'price_accuracy' || normalizedMode === 'full';
+            const planCap = Number(subscription.plan.monthlyCap);
+            const effectiveCap = isPriceAccuracyMode ? this.GLOBAL_PRICE_ACCURACY_CAP : planCap;
+
+            // Calculate remaining (prevent negative)
+            if (usedCount >= effectiveCap) {
+                return '0';
+            }
+            return String(effectiveCap - usedCount);
+        } catch (error) {
+            console.error('Error getting remaining inference:', error);
+            return '0';
+        }
+    }
+
     getAccessABI() {
         return [
             "function subscriptions(address user) external view returns (uint8 planId, uint256 startTimestamp, uint256 usedThisWindow, uint256 lastRenewedAt)",
