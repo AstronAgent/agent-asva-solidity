@@ -94,6 +94,22 @@ const res = await fetch(`/users/${user}/subscription`);
 const sub = await res.json();
 ```
 
+### GET `/users/:address/inference/remaining`
+- Purpose: get remaining inference count for a user based on subscription and mode. Calculated off-chain with window reset logic applied.
+- Query params:
+  - `mode` (string, required): one of `basic | tags | price_accuracy | full`
+- Response: `{ address, mode, remaining }` where `remaining` is the number of inferences available in the current 30-day window
+- Notes:
+  - Returns `0` if user has no active subscription
+  - Applies 30-day window reset logic automatically
+  - For `price_accuracy` and `full` modes, uses global cap of 3000 (regardless of plan)
+  - For other modes, uses the plan's monthly cap
+- Frontend :
+```js
+const res = await fetch(`/users/${user}/inference/remaining?mode=price_accuracy`);
+const data = await res.json(); // { address, mode: 'price_accuracy', remaining: '2500' }
+```
+
 ### GET `/users/:address/has-active-subscription`
 - Purpose: boolean helper for active subscription.
 - Frontend :
