@@ -17,6 +17,15 @@ app.use((req, res, next) => {
   next();
 });
 
+function normalizeHexAddress(address) {
+  try {
+    if (!address || typeof address !== 'string') return null;
+    return ethers.getAddress(address.trim());
+  } catch (_err) {
+    return null;
+  }
+}
+
 // Env config
 const PORT = process.env.PORT || 8080;
 const RPC_URL = process.env.RPC_URL || 'https://sepolia.infura.io/v3/YOUR_INFURA_KEY';
@@ -719,11 +728,12 @@ app.post('/credits/calculate', (req, res) => {
 app.post('/credits/calculate-and-store', async (req, res) => {
   try {
     const { address, reason, parameter } = req.body || {};
-    if (!ethers.isAddress(address)) return res.status(400).json({ error: 'valid address required' });
+    const checksumAddress = normalizeHexAddress(address);
+    if (!checksumAddress) return res.status(400).json({ error: 'valid address required' });
     if (typeof reason !== 'string') return res.status(400).json({ error: 'reason required' });
     if (!Number.isFinite(parameter)) return res.status(400).json({ error: 'parameter must be number' });
 
-    const normalizedAddress = normalizeAddress(address);
+    const normalizedAddress = normalizeAddress(checksumAddress);
     const credits = getOracle().calculateCredits(reason, Number(parameter));
     
     if (credits <= 0) {
@@ -767,7 +777,8 @@ app.post('/inference/estimate', (req, res) => {
 app.post('/inference/authorize', async (req, res) => {
   try {
     const { user, mode, quantity = 1 } = req.body || {};
-    if (!ethers.isAddress(user)) return res.status(400).json({ error: 'valid user address required' });
+    const checksumUser = normalizeHexAddress(user);
+    if (!checksumUser) return res.status(400).json({ error: 'valid user address required' });
     const result = await getOracle().authorizeInference(user, mode, Number(quantity));
     return res.json(serialize(result));
   } catch (e) {
@@ -798,11 +809,12 @@ await tx.wait();
 app.post('/memory/update', async (req, res) => {
   try {
     const { user, memoryHash } = req.body || {};
-    if (!ethers.isAddress(user)) return res.status(400).json({ error: 'valid user address required' });
+    const checksumUser = normalizeHexAddress(user);
+    if (!checksumUser) return res.status(400).json({ error: 'valid user address required' });
     if (typeof memoryHash !== 'string' || memoryHash.length === 0) return res.status(400).json({ error: 'memoryHash required' });
 
     const iface = new ethers.Interface(getOracle().getAccessABI());
-    const data = iface.encodeFunctionData('updateUserMemoryPointer', [user, memoryHash]);
+    const data = iface.encodeFunctionData('updateUserMemoryPointer', [checksumUser, memoryHash]);
     return res.json(serialize({ to: RAVEN_ACCESS_ADDRESS, data }));
   } catch (e) {
     return res.status(400).json({ error: e.message });
@@ -814,7 +826,8 @@ app.post('/memory/update', async (req, res) => {
 app.post('/engagement', async (req, res) => {
   try {
     const { address, action, metadata = {} } = req.body || {};
-    if (!ethers.isAddress(address)) return res.status(400).json({ error: 'valid address required' });
+    const checksumAddress = normalizeHexAddress(address);
+    if (!checksumAddress) return res.status(400).json({ error: 'valid address required' });
     if (typeof action !== 'string' || action.length === 0) return res.status(400).json({ error: 'action required' });
 
     const credits = getOracle().getActionCredit(action);
@@ -825,7 +838,7 @@ app.post('/engagement', async (req, res) => {
     // Calculate XP:XP = Credits * 2 (only for engagement Actions)
     const xp = credits * 2;
 
-    const normalizedAddress = normalizeAddress(address);
+    const normalizedAddress = normalizeAddress(checksumAddress);
     const evt = {
       id: randomUUID(),
       address: normalizedAddress,
@@ -855,9 +868,10 @@ app.post('/engagement', async (req, res) => {
 app.get('/users/:address/credits', async (req, res) => {
   try {
     const addr = req.params.address;
-    if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
-    const credits = await getOracle().getUserCredits(addr);
-    return res.json(serialize({ address: addr, credits }));
+    const checksumAddr = normalizeHexAddress(addr);
+    if (!checksumAddr) return res.status(400).json({ error: 'invalid address' });
+    const credits = await getOracle().getUserCredits(checksumAddr);
+    return res.json(serialize({ address: checksumAddr, credits }));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -866,11 +880,12 @@ app.get('/users/:address/credits', async (req, res) => {
 app.get('/users/:address/xp', async (req , res) => {
 try{
     const addr = req.params.address;
-    if(!ethers.isAddress(addr)) return res.status(400).json({error: 'Invalid Address'});
+    const checksumAddr = normalizeHexAddress(addr);
+    if(!checksumAddr) return res.status(400).json({error: 'Invalid Address'});
     const oracle = getOracle();
     const contract = new ethers.Contract(RAVEN_ACCESS_ADDRESS , oracle.getAccessABI() , getProvider());
-    const xp = await contract.getUserXP(addr);
-    return res.json(serialize({address: addr , xp: xp.toString()}));
+    const xp = await contract.getUserXP(checksumAddr);
+    return res.json(serialize({address: checksumAddr , xp: xp.toString()}));
   } catch (e){
     return res.status(500).json({error: e.message});
   }
@@ -880,8 +895,9 @@ try{
 app.get('/users/:address/credits/pending', async (req, res) => {
   try {
     const addr = req.params.address;
-    if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
-    const normalizedAddress = normalizeAddress(addr);
+    const checksumAddr = normalizeHexAddress(addr);
+    if (!checksumAddr) return res.status(400).json({ error: 'invalid address' });
+    const normalizedAddress = normalizeAddress(checksumAddr);
     const data = await engagementStore.getPendingForUser(normalizedAddress);
     return res.json(serialize(data));
   } catch (e) {
@@ -893,8 +909,9 @@ app.get('/users/:address/credits/pending', async (req, res) => {
 app.get('/users/:address/credits/calculated', async (req, res) => {
   try {
     const addr = req.params.address;
-    if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
-    const normalizedAddress = normalizeAddress(addr);
+    const checksumAddr = normalizeHexAddress(addr);
+    if (!checksumAddr) return res.status(400).json({ error: 'invalid address' });
+    const normalizedAddress = normalizeAddress(checksumAddr);
     const data = await engagementStore.getCalculatedCreditsForUser(normalizedAddress);
     return res.json(serialize(data));
   } catch (e) {
@@ -905,8 +922,9 @@ app.get('/users/:address/credits/calculated', async (req, res) => {
 app.get('/users/:address/subscription', async (req, res) => {
   try {
     const addr = req.params.address;
-    if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
-    const sub = await getOracle().getUserSubscription(addr);
+    const checksumAddr = normalizeHexAddress(addr);
+    if (!checksumAddr) return res.status(400).json({ error: 'invalid address' });
+    const sub = await getOracle().getUserSubscription(checksumAddr);
     return res.json(serialize(sub || {}));
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -919,10 +937,11 @@ app.get('/users/:address/inference/remaining', async (req, res) => {
   try {
     const addr = req.params.address;
     const mode = req.query.mode;
-    if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
+    const checksumAddr = normalizeHexAddress(addr);
+    if (!checksumAddr) return res.status(400).json({ error: 'invalid address' });
     if (!mode || typeof mode !== 'string') return res.status(400).json({ error: 'mode query parameter required (basic, tags, price_accuracy, or full)' });
-    const remaining = await getOracle().getRemainingInference(addr, mode);
-    return res.json(serialize({ address: addr, mode, remaining }));
+    const remaining = await getOracle().getRemainingInference(checksumAddr, mode);
+    return res.json(serialize({ address: checksumAddr, mode, remaining }));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -932,9 +951,10 @@ app.get('/users/:address/inference/remaining', async (req, res) => {
 app.get('/users/:address/has-active-subscription', async (req, res) => {
   try {
     const addr = req.params.address;
-    if (!ethers.isAddress(addr)) return res.status(400).json({ error: 'invalid address' });
-    const has = await getOracle().hasActiveSubscription(addr);
-    return res.json(serialize({ address: addr, hasActiveSubscription: !!has }));
+    const checksumAddr = normalizeHexAddress(addr);
+    if (!checksumAddr) return res.status(400).json({ error: 'invalid address' });
+    const has = await getOracle().hasActiveSubscription(checksumAddr);
+    return res.json(serialize({ address: checksumAddr, hasActiveSubscription: !!has }));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -952,11 +972,12 @@ await tx.wait();
 app.post('/credits/initial-grant', async (req, res) => {
   try {
     const { user } = req.body || {};
-    if (!ethers.isAddress(user)) return res.status(400).json({ error: 'valid user address required' });
+    const checksumUser = normalizeHexAddress(user);
+    if (!checksumUser) return res.status(400).json({ error: 'valid user address required' });
 
     const [creditsStr, subscription] = await Promise.all([
-      getOracle().getUserCredits(user),
-      getOracle().getUserSubscription(user)
+      getOracle().getUserCredits(checksumUser),
+      getOracle().getUserSubscription(checksumUser)
     ]);
 
     const hasCredits = BigInt(creditsStr) > 0n;
@@ -966,7 +987,7 @@ app.post('/credits/initial-grant', async (req, res) => {
     }
 
     const iface = new ethers.Interface(getOracle().getAccessABI());
-    const data = iface.encodeFunctionData('awardCredits', [user, 50, 'initial_grant']);
+    const data = iface.encodeFunctionData('awardCredits', [checksumUser, 50, 'initial_grant']);
     return res.json(serialize({ to: RAVEN_ACCESS_ADDRESS, data }));
   } catch (e) {
     return res.status(400).json({ error: e.message });
